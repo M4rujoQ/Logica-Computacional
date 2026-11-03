@@ -1,0 +1,369 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.24.2",
+    "script_metadata_hash": null
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "f340592928f0097fc40f5e94fdc63d50",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "5959f135fe8bf3c68b3a77bbd0ae8ef6",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"exercicio-3-multiplicacao-de-inteiros-com-um-sfots-em-bitvec\">Exerc\u00edcio 3 \u2014 Multiplica\u00e7\u00e3o de inteiros com um SFOTS em BitVec</h1>\n<span class=\"paragraph\"><strong>Conven\u00e7\u00f5es</strong></span>\n<ul>\n<li>Os inteiros s\u00e3o vetores de bits de tamanho <marimo-tex class=\"arithmatex\">||(n||)</marimo-tex> (nos testes, <marimo-tex class=\"arithmatex\">||(n = 8||)</marimo-tex>), tratados <strong>sem sinal</strong>: usamos <code>BVULT</code>, <code>BVLShl</code>, <code>BVLShr</code> e <code>BVZExt</code>.</li>\n<li>O <code>pc</code> \u00e9 um inteiro que identifica o nodo do CFA: <code>INIT=0, SKIP=1, LEFT=2, RIGHT=3, STOP=4, ERROR=5</code>.</li>\n<li>Em Z3 a aritm\u00e9tica de <code>BitVec</code> \u00e9 m\u00f3dulo <marimo-tex class=\"arithmatex\">||(2^n||)</marimo-tex> e nunca falha, por isso o overflow tem de ser detetado explicitamente no modelo.</li>\n<li>As verifica\u00e7\u00f5es pedem sempre ao solver um <strong>contra-exemplo</strong>: <code>UNSAT</code> significa que a condi\u00e7\u00e3o vale.</li>\n</ul></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "0f7d074820b42bde76c2da218e0f6efa",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "49a6208c46e0fbddcc92d90577f6e38c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><hr />\n<h2 id=\"1-construcao-do-sfots\">1. Constru\u00e7\u00e3o do SFOTS</h2>\n<h3 id=\"variaveis-de-estado\">Vari\u00e1veis de estado</h3>\n<table>\n<thead>\n<tr>\n<th>vari\u00e1vel</th>\n<th>tipo</th>\n<th>papel</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>pc</code></td>\n<td><code>INT</code></td>\n<td>nodo do CFA</td>\n</tr>\n<tr>\n<td><code>a</code>, <code>b</code></td>\n<td><code>BitVec(n)</code></td>\n<td>inputs (constantes ao longo da execu\u00e7\u00e3o)</td>\n</tr>\n<tr>\n<td><code>x</code>, <code>y</code>, <code>z</code></td>\n<td><code>BitVec(n)</code></td>\n<td>vari\u00e1veis do algoritmo</td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\"><code>a</code> e <code>b</code> fazem parte do estado porque o invariante <marimo-tex class=\"arithmatex\">||(x*y + z = a*b||)</marimo-tex> precisa dos valores <strong>iniciais</strong>, que <code>x</code> e <code>y</code> v\u00e3o perdendo. Como cada c\u00f3pia do estado tem s\u00edmbolos novos (<code>a0, a1, ...</code>), o solver n\u00e3o sabe que representam a mesma quantidade. Por isso a rela\u00e7\u00e3o de transi\u00e7\u00e3o imp\u00f5e <code>a' = a</code> e <code>b' = b</code> (fun\u00e7\u00e3o <code>same</code>), o que as torna constantes em qualquer tra\u00e7o.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "e2f15ee84c55159330f0cfea0f960e2b",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "3165538af05c458cfe3e4ac37f97e7fb",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"funcoes-auxiliares\">Fun\u00e7\u00f5es auxiliares</h3>\n<ul>\n<li><strong>Paridade.</strong> <code>par(y)</code> \u00e9 <code>BVAnd(y, 1) = 0</code>: o <code>AND</code> com a m\u00e1scara <code>00\u202601</code> isola o bit menos significativo, que decide a paridade.</li>\n<li><strong>Overflow de <marimo-tex class=\"arithmatex\">||(x \\ll 1||)</marimo-tex>.</strong> H\u00e1 perda de informa\u00e7\u00e3o se e s\u00f3 se o bit mais significativo de <code>x</code> \u00e9 1, isto \u00e9, <marimo-tex class=\"arithmatex\">||(x \\geq 2^{n-1}||)</marimo-tex>.</li>\n<li><strong>Overflow de <marimo-tex class=\"arithmatex\">||(z + x||)</marimo-tex>.</strong> A soma d\u00e1 a volta se e s\u00f3 se o resultado fica menor que <code>z</code>: <code>BVULT(z + x, z)</code>.</li>\n<li><strong><code>same</code></strong> imp\u00f5e que as vari\u00e1veis indicadas ficam iguais entre o estado atual e o seguinte.</li>\n</ul></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "78e9ee786c9418c4d794b026b44bd549",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "3d6b8bb61d96fdc60f842f0f30283aab",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"estado-inicial\">Estado inicial</h3>\n<marimo-tex class=\"arithmatex\">||[\n\\mathit{init}(s) \\;\\equiv\\; pc = \\mathit{INIT} \\,\\wedge\\, x = a \\,\\wedge\\, y = b \\,\\wedge\\, z = 0\n||]</marimo-tex><span class=\"paragraph\">Opt\u00e1mos por o estado inicial j\u00e1 ter <code>x, y, z = a, b, 0</code>, em vez de 0. Assim o invariante <marimo-tex class=\"arithmatex\">||(x*y + z = a*b||)</marimo-tex> vale logo no estado inicial. O nodo <code>INIT</code> mant\u00e9m-se, como no diagrama, e a transi\u00e7\u00e3o <code>init \u2192 skip</code> repete a atribui\u00e7\u00e3o (que j\u00e1 est\u00e1 satisfeita). N\u00e3o se imp\u00f5e nenhuma restri\u00e7\u00e3o sobre <code>a</code> e <code>b</code>, para verificar o programa para todas as entradas.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "de2095f7e74800523eebdfa1e8c5c710",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "e5616705bb473aeda0d5ee73ea5a48e2",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"relacao-de-transicao\">Rela\u00e7\u00e3o de transi\u00e7\u00e3o</h3>\n<table>\n<thead>\n<tr>\n<th>transi\u00e7\u00e3o</th>\n<th>guarda</th>\n<th>efeito</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>init \u2192 skip</code></td>\n<td>\u2014</td>\n<td><marimo-tex class=\"arithmatex\">||(x,y,z \\leftarrow a,b,0||)</marimo-tex></td>\n</tr>\n<tr>\n<td><code>skip \u2192 left</code></td>\n<td><marimo-tex class=\"arithmatex\">||(y \\neq 0 \\wedge \\mathit{par}(y)||)</marimo-tex></td>\n<td>s\u00f3 muda o <code>pc</code></td>\n</tr>\n<tr>\n<td><code>skip \u2192 right</code></td>\n<td><marimo-tex class=\"arithmatex\">||(y \\neq 0 \\wedge \\mathit{impar}(y)||)</marimo-tex></td>\n<td>s\u00f3 muda o <code>pc</code></td>\n</tr>\n<tr>\n<td><code>skip \u2192 stop</code></td>\n<td><marimo-tex class=\"arithmatex\">||(y = 0||)</marimo-tex></td>\n<td>s\u00f3 muda o <code>pc</code></td>\n</tr>\n<tr>\n<td><code>left \u2192 skip</code></td>\n<td><marimo-tex class=\"arithmatex\">||(\\neg \\mathit{ovf}_{\\ll}(x)||)</marimo-tex></td>\n<td><marimo-tex class=\"arithmatex\">||(x \\leftarrow x \\ll 1,\\; y \\leftarrow y \\gg 1||)</marimo-tex></td>\n</tr>\n<tr>\n<td><code>left \u2192 error</code></td>\n<td><marimo-tex class=\"arithmatex\">||(\\mathit{ovf}_{\\ll}(x)||)</marimo-tex></td>\n<td>s\u00f3 muda o <code>pc</code></td>\n</tr>\n<tr>\n<td><code>right \u2192 skip</code></td>\n<td><marimo-tex class=\"arithmatex\">||(\\neg \\mathit{ovf}_{+}(z,x)||)</marimo-tex></td>\n<td><marimo-tex class=\"arithmatex\">||(y \\leftarrow y - 1,\\; z \\leftarrow z + x||)</marimo-tex></td>\n</tr>\n<tr>\n<td><code>right \u2192 error</code></td>\n<td><marimo-tex class=\"arithmatex\">||(\\mathit{ovf}_{+}(z,x)||)</marimo-tex></td>\n<td>s\u00f3 muda o <code>pc</code></td>\n</tr>\n<tr>\n<td><code>stop \u2192 stop</code>, <code>error \u2192 error</code></td>\n<td>\u2014</td>\n<td>ciclo (todo o estado tem sucessor)</td>\n</tr>\n</tbody>\n</table>\n<ul>\n<li><strong>Preced\u00eancia do erro.</strong> A transi\u00e7\u00e3o normal s\u00f3 \u00e9 poss\u00edvel quando n\u00e3o h\u00e1 overflow e a de erro s\u00f3 quando h\u00e1: as guardas s\u00e3o mutuamente exclusivas.</li>\n<li><strong><code>y &gt;&gt; 1</code> e <code>y - 1</code></strong> n\u00e3o precisam de teste de overflow: s\u00f3 se aplicam com <code>y</code> par (<code>y &gt;&gt; 1</code> n\u00e3o perde nenhum bit 1) e com <code>y</code> \u00edmpar (<code>y - 1 \u2265 0</code>).</li>\n</ul></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "c3cf63d9c7a9b5a061b1ca7aea719fc3",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "68e78b1e0801ae797b627fed98d5ce53",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"estado-de-erro\">Estado de erro</h3>\n<marimo-tex class=\"arithmatex\">||[\n\\mathit{erro}(s) \\;\\equiv\\; pc = \\mathit{ERROR}\n||]</marimo-tex></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Hstk",
+      "code_hash": "7de87f5d576522477ee1ea18eaf7e376",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "48c6887c3e08bb57856d3248e15997bd",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"validacao-do-modelo\">Valida\u00e7\u00e3o do modelo</h3>\n<span class=\"paragraph\">A fun\u00e7\u00e3o <code>gera_traco</code> pede ao solver um tra\u00e7o de <code>k</code> estados que respeite <code>init</code> e <code>trans</code>. O par\u00e2metro <code>extra</code> permite escolher o cen\u00e1rio.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "iLit",
+      "code_hash": "ed6393ebf8e60575d19dbc248f4d165c",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "ZHCJ",
+      "code_hash": "ef26df1f555ae13a2d5eb630727142b2",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Com <marimo-tex class=\"arithmatex\">||(a = 3,\\, b = 5||)</marimo-tex> o tra\u00e7o percorre <code>init \u2192 skip \u2192 right \u2192 skip \u2192 left \u2192 \u2026 \u2192 stop</code> e termina com <marimo-tex class=\"arithmatex\">||(z = 15 = 3 \\times 5||)</marimo-tex>.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ROlb",
+      "code_hash": "c5ead7198e65520fd7335f84f58ed89f",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "qnkX",
+      "code_hash": "7207467e3d52da362457b80d860fdf33",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Com <marimo-tex class=\"arithmatex\">||(a = 100,\\, b = 3||)</marimo-tex> for\u00e7amos o \u00faltimo estado a ser de erro: em <code>right</code>, com <marimo-tex class=\"arithmatex\">||(x = 200||)</marimo-tex> e <marimo-tex class=\"arithmatex\">||(z = 100||)</marimo-tex>, a soma <marimo-tex class=\"arithmatex\">||(300||)</marimo-tex> n\u00e3o cabe em 8 bits e o programa vai para <code>error</code>.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "TqIu",
+      "code_hash": "f1df88969c0f91f62863b07f69683bcb",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "Vxnm",
+      "code_hash": "22e15bccd44a19b43ec7aee02bb25cc8",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><hr />\n<h2 id=\"2-verificacao-de-xy-z-ab-por-k-inducao\">2. Verifica\u00e7\u00e3o de <marimo-tex class=\"arithmatex\">||(x*y + z = a*b||)</marimo-tex> por <marimo-tex class=\"arithmatex\">||(k||)</marimo-tex>-indu\u00e7\u00e3o</h2>\n<marimo-tex class=\"arithmatex\">||[\n\\varphi(s) \\;\\equiv\\; x*y + z = a*b \\qquad\\text{(em } \\texttt{BitVec}(n)\\text{, m\u00f3dulo } 2^n\\text{)}\n||]</marimo-tex><h3 id=\"metodo\">M\u00e9todo</h3>\n<span class=\"paragraph\">A <marimo-tex class=\"arithmatex\">||(k||)</marimo-tex>-indu\u00e7\u00e3o prova <marimo-tex class=\"arithmatex\">||(G\\,\\varphi||)</marimo-tex> com duas verifica\u00e7\u00f5es:</span>\n<ul>\n<li><strong>Base:</strong> <marimo-tex class=\"arithmatex\">||(\\varphi||)</marimo-tex> vale nos primeiros <marimo-tex class=\"arithmatex\">||(k||)</marimo-tex> estados de qualquer tra\u00e7o que comece num estado inicial. Procura-se <marimo-tex class=\"arithmatex\">||(\\mathit{init}(s_0) \\wedge \\mathit{trans}(s_0,s_1) \\wedge \\dots \\wedge \\bigvee_i \\neg\\varphi(s_i)||)</marimo-tex>.</li>\n<li><strong>Passo:</strong> se <marimo-tex class=\"arithmatex\">||(\\varphi||)</marimo-tex> vale em <marimo-tex class=\"arithmatex\">||(k||)</marimo-tex> estados consecutivos, vale no seguinte. Procura-se <marimo-tex class=\"arithmatex\">||(\\bigwedge_{i&lt;k}\\big(\\varphi(s_i) \\wedge \\mathit{trans}(s_i,s_{i+1})\\big) \\wedge \\neg\\varphi(s_k)||)</marimo-tex>.</li>\n</ul>\n<span class=\"paragraph\">Com <marimo-tex class=\"arithmatex\">||(k = 1||)</marimo-tex> \u00e9 a indu\u00e7\u00e3o simples.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "DnEU",
+      "code_hash": "1bbfd479e8cf8fea2a55d2d1f2add940",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "ulZA",
+      "code_hash": "81f0795297622830263fcd9f5647f24c",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "ecfG",
+      "code_hash": "9b0e34cf191eaa9e5f9edd9ede4c3db1",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "Pvdt",
+      "code_hash": "365e904e26bfab1cb34c9599f5a2a634",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"resultados\">Resultados</h3>\n<table>\n<thead>\n<tr>\n<th><marimo-tex class=\"arithmatex\">||(k||)</marimo-tex></th>\n<th>resultado</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>1</td>\n<td>o <strong>passo</strong> falha</td>\n</tr>\n<tr>\n<td>2</td>\n<td><strong>verificado</strong></td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\">Com <marimo-tex class=\"arithmatex\">||(k = 1||)</marimo-tex> o contra-exemplo do passo \u00e9 um estado <strong>inalcan\u00e7\u00e1vel</strong>, por exemplo <code>pc = LEFT</code> com <marimo-tex class=\"arithmatex\">||(y||)</marimo-tex> \u00edmpar. A guarda de <code>skip \u2192 left</code> exige <marimo-tex class=\"arithmatex\">||(y||)</marimo-tex> par, mas a indu\u00e7\u00e3o simples parte de qualquer estado que satisfa\u00e7a <marimo-tex class=\"arithmatex\">||(\\varphi||)</marimo-tex>; a\u00ed <marimo-tex class=\"arithmatex\">||(y \\gg 1||)</marimo-tex> perde um bit 1 e <marimo-tex class=\"arithmatex\">||(\\varphi||)</marimo-tex> deixa de valer no estado seguinte. Com <marimo-tex class=\"arithmatex\">||(k = 2||)</marimo-tex>, o estado anterior ao <code>left</code> tem de ser um <code>skip</code> com <marimo-tex class=\"arithmatex\">||(y||)</marimo-tex> par (e com <marimo-tex class=\"arithmatex\">||(\\varphi||)</marimo-tex>), o que elimina o contra-exemplo.</span>\n<span class=\"paragraph\"><strong>Porque \u00e9 que o invariante se mant\u00e9m.</strong> Cada transi\u00e7\u00e3o preserva <marimo-tex class=\"arithmatex\">||(x*y + z||)</marimo-tex>:</span>\n<ul>\n<li><code>left</code>: <marimo-tex class=\"arithmatex\">||((2x)\\cdot(y/2) + z = x*y + z||)</marimo-tex>, pois <marimo-tex class=\"arithmatex\">||(y||)</marimo-tex> \u00e9 par;</li>\n<li><code>right</code>: <marimo-tex class=\"arithmatex\">||(x\\cdot(y-1) + (z + x) = x*y + z||)</marimo-tex>.</li>\n</ul>\n<span class=\"paragraph\">Estas identidades valem em aritm\u00e9tica m\u00f3dulo <marimo-tex class=\"arithmatex\">||(2^n||)</marimo-tex>, por isso o invariante n\u00e3o precisa de aus\u00eancia de overflow. As transi\u00e7\u00f5es para <code>error</code> n\u00e3o alteram <code>x</code>, <code>y</code>, <code>z</code>, pelo que <marimo-tex class=\"arithmatex\">||(\\varphi||)</marimo-tex> tamb\u00e9m vale em <code>error</code>.</span>\n<span class=\"paragraph\"><strong>Teste de controlo.</strong> Com um invariante falso (<marimo-tex class=\"arithmatex\">||(x*y + z = a*b + 1||)</marimo-tex>) a verifica\u00e7\u00e3o falha logo na base.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ZBYS",
+      "code_hash": "1bdf930e507459236d5f48045b3b7027",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "aLJB",
+      "code_hash": "7eb46a834e90ebbc9e8450630a0f8c61",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><hr />\n<h2 id=\"3-seguranca-com-a-b-2n2\">3. Seguran\u00e7a com <marimo-tex class=\"arithmatex\">||(a, b &lt; 2^{n/2}||)</marimo-tex></h2>\n<marimo-tex class=\"arithmatex\">||[\n\\mathit{init}_3(s) \\;\\equiv\\; \\mathit{init}(s) \\,\\wedge\\, a &lt; 2^{n/2} \\,\\wedge\\, b &lt; 2^{n/2}\n||]</marimo-tex><h3 id=\"porque-e-que-varphi-do-ponto-2-nao-chega\">Porque \u00e9 que <marimo-tex class=\"arithmatex\">||(\\varphi||)</marimo-tex> do ponto 2 n\u00e3o chega</h3>\n<span class=\"paragraph\">O invariante do ponto 2 vale m\u00f3dulo <marimo-tex class=\"arithmatex\">||(2^n||)</marimo-tex>: pode valer em estados onde <marimo-tex class=\"arithmatex\">||(x*y + z||)</marimo-tex> \"deu a volta\" e coincide com <marimo-tex class=\"arithmatex\">||(a*b||)</marimo-tex>, e nesses estados nada impede o overflow. Exemplo com <marimo-tex class=\"arithmatex\">||(a = b = 1||)</marimo-tex>: o estado <code>pc = RIGHT, x = 200, y = 1, z = 57</code> tem <marimo-tex class=\"arithmatex\">||(200 + 57 = 257 \\equiv 1 = a*b \\pmod{256}||)</marimo-tex>, mas <marimo-tex class=\"arithmatex\">||(z + x = 257||)</marimo-tex> n\u00e3o cabe em 8 bits e vai para <code>error</code>. O estado \u00e9 inalcan\u00e7\u00e1vel, mas o passo da indu\u00e7\u00e3o n\u00e3o o distingue.</span>\n<h3 id=\"invariante-auxiliar\">Invariante auxiliar</h3>\n<marimo-tex class=\"arithmatex\">||[\n\\psi(s) \\;\\equiv\\; pc \\neq \\mathit{ERROR} \\;\\wedge\\; a &lt; 2^{n/2} \\;\\wedge\\; b &lt; 2^{n/2} \\;\\wedge\\; x*y + z = a*b \\;\\text{ (em } 2n \\text{ bits)}\n||]</marimo-tex><span class=\"paragraph\">A igualdade \u00e9 calculada <strong>alargando</strong> os vetores para <marimo-tex class=\"arithmatex\">||(2n||)</marimo-tex> bits (<code>BVZExt</code>). Como <marimo-tex class=\"arithmatex\">||(x*y + z \\leq (2^n-1)^2 + (2^n-1) &lt; 2^{2n}||)</marimo-tex>, n\u00e3o h\u00e1 volta e a igualdade \u00e9 a verdadeira, em inteiros.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nHfw",
+      "code_hash": "69fa50dd508b2431c0c947cf6844df6b",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "xXTn",
+      "code_hash": "b43d887e74e2c4d7be5a16f747ac1f47",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "AjVT",
+      "code_hash": "9ceb9b990df881c373244337a0b68f4c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"porque-implica-a-ausencia-de-erro\">Porque implica a aus\u00eancia de erro</h3>\n<span class=\"paragraph\">Se <marimo-tex class=\"arithmatex\">||(\\psi||)</marimo-tex> vale, ent\u00e3o <marimo-tex class=\"arithmatex\">||(a*b &lt; 2^{n/2}\\cdot 2^{n/2} = 2^n||)</marimo-tex> e <marimo-tex class=\"arithmatex\">||(x*y + z = a*b &lt; 2^n||)</marimo-tex>. Assim:</span>\n<ul>\n<li>em <code>left</code> temos <marimo-tex class=\"arithmatex\">||(y \\geq 2||)</marimo-tex> (par e <marimo-tex class=\"arithmatex\">||(\\neq 0||)</marimo-tex>), logo <marimo-tex class=\"arithmatex\">||(2x \\leq x*y \\leq a*b &lt; 2^n||)</marimo-tex> e n\u00e3o h\u00e1 overflow em <marimo-tex class=\"arithmatex\">||(x \\ll 1||)</marimo-tex>;</li>\n<li>em <code>right</code> temos <marimo-tex class=\"arithmatex\">||(y \\geq 1||)</marimo-tex>, logo <marimo-tex class=\"arithmatex\">||(z + x \\leq z + x*y = a*b &lt; 2^n||)</marimo-tex> e n\u00e3o h\u00e1 overflow em <marimo-tex class=\"arithmatex\">||(z + x||)</marimo-tex>.</li>\n</ul>\n<span class=\"paragraph\">Portanto as transi\u00e7\u00f5es para <code>error</code> nunca est\u00e3o ativas.</span>\n<h3 id=\"resultado\">Resultado</h3>\n<span class=\"paragraph\">Com <marimo-tex class=\"arithmatex\">||(\\mathit{init}_3||)</marimo-tex> e <marimo-tex class=\"arithmatex\">||(\\psi||)</marimo-tex>, a <marimo-tex class=\"arithmatex\">||(k||)</marimo-tex>-indu\u00e7\u00e3o <strong>verifica-se com <marimo-tex class=\"arithmatex\">||(k = 2||)</marimo-tex></strong>. Com <marimo-tex class=\"arithmatex\">||(k = 1||)</marimo-tex> o passo falha por um estado inalcan\u00e7\u00e1vel do segundo tipo, por exemplo <code>pc = RIGHT</code> com <marimo-tex class=\"arithmatex\">||(y = 0||)</marimo-tex> (a guarda de <code>skip \u2192 right</code> exige <marimo-tex class=\"arithmatex\">||(y \\neq 0||)</marimo-tex>), onde <marimo-tex class=\"arithmatex\">||(y - 1||)</marimo-tex> d\u00e1 a volta. Como <marimo-tex class=\"arithmatex\">||(\\psi||)</marimo-tex> inclui <marimo-tex class=\"arithmatex\">||(pc \\neq \\mathit{ERROR}||)</marimo-tex>, fica provado que, com este estado inicial, o estado de erro nunca \u00e9 acess\u00edvel.</span>\n<h3 id=\"teste-de-controlo\">Teste de controlo</h3>\n<span class=\"paragraph\">Sem a pr\u00e9-condi\u00e7\u00e3o, <marimo-tex class=\"arithmatex\">||(pc \\neq \\mathit{ERROR}||)</marimo-tex> <strong>n\u00e3o</strong> \u00e9 verdadeira: a base falha com contra-exemplos reais (por exemplo <marimo-tex class=\"arithmatex\">||(a = 36,\\, b = 128||)</marimo-tex>: <marimo-tex class=\"arithmatex\">||(x||)</marimo-tex> passa de <marimo-tex class=\"arithmatex\">||(36||)</marimo-tex> a <marimo-tex class=\"arithmatex\">||(72||)</marimo-tex> e a <marimo-tex class=\"arithmatex\">||(144||)</marimo-tex> e o <code>left</code> seguinte d\u00e1 overflow). A pr\u00e9-condi\u00e7\u00e3o \u00e9 necess\u00e1ria.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "pHFh",
+      "code_hash": "f18d7a42c0463bd0846cf0555c3be515",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "NCOB",
+      "code_hash": "85fe3dd7c5447c3763f93f21c39bc386",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><hr />\n<h2 id=\"4-terminacao-propriedade-de-animacao\">4. Termina\u00e7\u00e3o (propriedade de anima\u00e7\u00e3o)</h2>\n<span class=\"paragraph\">Sem pr\u00e9-condi\u00e7\u00e3o sobre <code>a</code> e <code>b</code>, o overflow \u00e9 um fim poss\u00edvel do programa, por isso a termina\u00e7\u00e3o escreve-se</span>\n<marimo-tex class=\"arithmatex\">||[\nF\\,\\big(G\\,(pc = \\mathit{STOP} \\,\\vee\\, pc = \\mathit{ERROR})\\big)\n||]</marimo-tex><span class=\"paragraph\">(Com <marimo-tex class=\"arithmatex\">||(\\mathit{init}_3||)</marimo-tex> e o ponto 3 podia escrever-se <marimo-tex class=\"arithmatex\">||(F\\,(G\\,(pc = \\mathit{STOP}))||)</marimo-tex>, trocando apenas o predicado <code>terminal</code>.)</span>\n<h3 id=\"metodo-do-variante\">M\u00e9todo do variante</h3>\n<span class=\"paragraph\">Procura-se <marimo-tex class=\"arithmatex\">||(V(s)||)</marimo-tex> tal que:</span>\n<ol>\n<li><marimo-tex class=\"arithmatex\">||(V(s) \\geq 0||)</marimo-tex>;</li>\n<li>em cada transi\u00e7\u00e3o, <marimo-tex class=\"arithmatex\">||(V(s') &lt; V(s) \\,\\vee\\, V(s') = 0||)</marimo-tex>;</li>\n<li><marimo-tex class=\"arithmatex\">||(V(s) = 0 \\rightarrow pc = \\mathit{STOP} \\vee pc = \\mathit{ERROR}||)</marimo-tex>.</li>\n</ol>\n<span class=\"paragraph\">Ent\u00e3o <marimo-tex class=\"arithmatex\">||(V||)</marimo-tex> chega a 0 em tempo finito e, a partir de 0, fica a 0 (a condi\u00e7\u00e3o 2 s\u00f3 permite <marimo-tex class=\"arithmatex\">||(V' = 0||)</marimo-tex>), logo o sistema fica num estado terminal.</span>\n<h3 id=\"escolha-do-variante\">Escolha do variante</h3>\n<span class=\"paragraph\"><marimo-tex class=\"arithmatex\">||(y||)</marimo-tex> sozinho n\u00e3o serve: n\u00e3o muda em <code>init \u2192 skip</code> nem em <code>skip \u2192 left/right</code>; no <code>error</code> pode ser diferente de 0 e ficar constante; e <marimo-tex class=\"arithmatex\">||(V = 0||)</marimo-tex> aparece em <code>skip</code> com <marimo-tex class=\"arithmatex\">||(y = 0||)</marimo-tex>, onde o programa ainda n\u00e3o parou. O variante depende do <code>pc</code>:</span>\n<table>\n<thead>\n<tr>\n<th>nodo</th>\n<th><marimo-tex class=\"arithmatex\">||(V||)</marimo-tex></th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>STOP</code>, <code>ERROR</code></td>\n<td><marimo-tex class=\"arithmatex\">||(0||)</marimo-tex></td>\n</tr>\n<tr>\n<td><code>SKIP</code></td>\n<td><marimo-tex class=\"arithmatex\">||(2y + 1||)</marimo-tex></td>\n</tr>\n<tr>\n<td><code>LEFT</code>, <code>RIGHT</code></td>\n<td><marimo-tex class=\"arithmatex\">||(2y||)</marimo-tex></td>\n</tr>\n<tr>\n<td><code>INIT</code></td>\n<td><marimo-tex class=\"arithmatex\">||(2b + 2||)</marimo-tex></td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>transi\u00e7\u00e3o</th>\n<th><marimo-tex class=\"arithmatex\">||(V||)</marimo-tex> antes <marimo-tex class=\"arithmatex\">||(\\to||)</marimo-tex> depois</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>init \u2192 skip</code> (<marimo-tex class=\"arithmatex\">||(y' = b||)</marimo-tex>)</td>\n<td><marimo-tex class=\"arithmatex\">||(2b+2 \\to 2b+1||)</marimo-tex></td>\n</tr>\n<tr>\n<td><code>skip \u2192 left/right</code></td>\n<td><marimo-tex class=\"arithmatex\">||(2y+1 \\to 2y||)</marimo-tex></td>\n</tr>\n<tr>\n<td><code>skip \u2192 stop</code> (<marimo-tex class=\"arithmatex\">||(y = 0||)</marimo-tex>)</td>\n<td><marimo-tex class=\"arithmatex\">||(1 \\to 0||)</marimo-tex></td>\n</tr>\n<tr>\n<td><code>left \u2192 skip</code> (<marimo-tex class=\"arithmatex\">||(y' = y/2||)</marimo-tex>, <marimo-tex class=\"arithmatex\">||(y \\geq 2||)</marimo-tex>)</td>\n<td><marimo-tex class=\"arithmatex\">||(2y \\to y+1 &lt; 2y||)</marimo-tex></td>\n</tr>\n<tr>\n<td><code>right \u2192 skip</code> (<marimo-tex class=\"arithmatex\">||(y' = y-1||)</marimo-tex>)</td>\n<td><marimo-tex class=\"arithmatex\">||(2y \\to 2y - 1||)</marimo-tex></td>\n</tr>\n<tr>\n<td><code>left/right \u2192 error</code></td>\n<td><marimo-tex class=\"arithmatex\">||(\\to 0||)</marimo-tex></td>\n</tr>\n<tr>\n<td><code>stop \u2192 stop</code>, <code>error \u2192 error</code></td>\n<td><marimo-tex class=\"arithmatex\">||(0 \\to 0||)</marimo-tex></td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\">O variante \u00e9 calculado em <marimo-tex class=\"arithmatex\">||(2n||)</marimo-tex> bits, porque <marimo-tex class=\"arithmatex\">||(2b + 2||)</marimo-tex> pode chegar a <marimo-tex class=\"arithmatex\">||(2^{n+1}||)</marimo-tex>. Com <code>BitVec</code> sem sinal, a condi\u00e7\u00e3o 1 \u00e9 autom\u00e1tica.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "aqbW",
+      "code_hash": "45c6a2e63368572794486b38fbf04e3e",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "TRpd",
+      "code_hash": "e2207e3ccfaba3fb44a33f5ec6950b4a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"verificacao\">Verifica\u00e7\u00e3o</h3>\n<span class=\"paragraph\">A condi\u00e7\u00e3o 3 \u00e9 um invariante sobre estados e verifica-se com <code>kinduction_always</code>. A condi\u00e7\u00e3o 2 fala de transi\u00e7\u00f5es, por isso <code>kinduction_transicoes</code> faz a <marimo-tex class=\"arithmatex\">||(k||)</marimo-tex>-indu\u00e7\u00e3o sobre pares de estados consecutivos: a base cobre as <marimo-tex class=\"arithmatex\">||(k||)</marimo-tex> primeiras transi\u00e7\u00f5es de qualquer tra\u00e7o inicial e o passo assume a propriedade em <marimo-tex class=\"arithmatex\">||(k||)</marimo-tex> transi\u00e7\u00f5es consecutivas. Esta formula\u00e7\u00e3o substitui o \"para todo o sucessor <marimo-tex class=\"arithmatex\">||(s'||)</marimo-tex>\" por \"em todas as transi\u00e7\u00f5es dos tra\u00e7os\", que \u00e9 equivalente e evita quantificadores no Z3. Aqui o <marimo-tex class=\"arithmatex\">||(k||)</marimo-tex> conta <strong>transi\u00e7\u00f5es</strong>.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "TXez",
+      "code_hash": "93e57e59f156af61a11a09a19a17e871",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "dNNg",
+      "code_hash": "88f046e9664c93536b8e84f1b5d67b33",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "yCnT",
+      "code_hash": "4bdffb9490a04229e71ae3065b73bce0",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"resultados\">Resultados</h3>\n<table>\n<thead>\n<tr>\n<th>condi\u00e7\u00e3o</th>\n<th>resultado</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>1</td>\n<td>autom\u00e1tica</td>\n</tr>\n<tr>\n<td>2</td>\n<td>verificada, <marimo-tex class=\"arithmatex\">||(k = 1||)</marimo-tex> (conta transi\u00e7\u00f5es)</td>\n</tr>\n<tr>\n<td>3</td>\n<td>verificada, <marimo-tex class=\"arithmatex\">||(k = 1||)</marimo-tex></td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\"><marimo-tex class=\"arithmatex\">||(k = 1||)</marimo-tex> basta porque o passo j\u00e1 inclui a transi\u00e7\u00e3o que leva ao estado em an\u00e1lise, o que exclui \u00e0 partida os estados incoerentes com o fluxo de controlo (por exemplo <code>left</code> com <marimo-tex class=\"arithmatex\">||(y = 0||)</marimo-tex>).</span>\n<span class=\"paragraph\"><strong>Teste de controlo.</strong> Com um variante errado, <marimo-tex class=\"arithmatex\">||(V = y||)</marimo-tex>, o verificador rejeita a condi\u00e7\u00e3o 2 (em <code>init \u2192 skip</code> o variante n\u00e3o desce) e a condi\u00e7\u00e3o 3 (com <marimo-tex class=\"arithmatex\">||(b = 0||)</marimo-tex>, <marimo-tex class=\"arithmatex\">||(V = 0||)</marimo-tex> em <code>pc = INIT</code>).</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "wlCL",
+      "code_hash": "8ac85b32507fbfc66b038e283bcdfdf9",
+      "outputs": [],
+      "console": []
+    },
+    {
+      "id": "kqZH",
+      "code_hash": "122f23a488331b90b84f6d5dd1fed8b9",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"conclusao\">Conclus\u00e3o</h3>\n<span class=\"paragraph\">O programa termina, a partir de qualquer <marimo-tex class=\"arithmatex\">||(a||)</marimo-tex> e <marimo-tex class=\"arithmatex\">||(b||)</marimo-tex>, num estado terminal (<code>stop</code> ou <code>error</code>).</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "wAgl",
+      "code_hash": "94865f234b6d9632fc5c95febe17a159",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"link-do-claude\">Link do Claude</h3>\n<span class=\"paragraph\"><a href=\"https://claude.ai/share/75be6205-4323-4ab2-8d95-1aa28f3f9810\" rel=\"noopener noreferrer\" target=\"_blank\">https://claude.ai/share/75be6205-4323-4ab2-8d95-1aa28f3f9810</a></span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

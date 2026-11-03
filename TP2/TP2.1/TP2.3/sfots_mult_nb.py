@@ -763,6 +763,17 @@ def _(mo):
     O programa termina, a partir de qualquer $a$ e $b$, num estado terminal (`stop` ou `error`).
     """)
     return
+
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Conversa com LLM
+ 
+    https://claude.ai/share/75be6205-4323-4ab2-8d95-1aa28f3f9810
+    """)
+    return
  
  
 if __name__ == "__main__":
